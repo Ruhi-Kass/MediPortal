@@ -113,10 +113,15 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     });
   }, [inpatients, inpatientSortBy, inpatientSortOrder]);
 
-  // Helper to parse "09:00 AM" for comparison
+  // Helper to parse time that may be "HH:MM AM" or "YYYY-MM-DD HH:MM AM"
   const parseTime = (timeStr: string) => {
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
+    const parts = timeStr.split(' ');
+    // If includes a date prefix, take the time+modifier starting at index 1
+    const time = parts.length >= 3 ? parts[1] : parts[0];
+    const modifier = parts.length >= 3 ? parts[2] : parts[1];
+    let [hoursStr, minutesStr] = time.split(':');
+    let hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr, 10) || 0;
     if (modifier === 'PM' && hours < 12) hours += 12;
     if (modifier === 'AM' && hours === 12) hours = 0;
     return hours * 60 + minutes;
@@ -475,6 +480,13 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                                <>
                                  <span className="text-slate-300 text-[10px]">•</span>
                                  <p className="text-[10px] md:text-xs font-bold text-royal-blue uppercase tracking-widest truncate">{s.patientName}</p>
+                               </>
+                             )}
+                             {/* Show doctor name if provided on schedule item via parent mapping */}
+                             {(s as any).doctorName && (
+                               <>
+                                 <span className="text-slate-300 text-[10px]">•</span>
+                                 <p className="text-[10px] md:text-xs font-medium text-slate-500 truncate">Dr. {(s as any).doctorName}</p>
                                </>
                              )}
                            </div>
