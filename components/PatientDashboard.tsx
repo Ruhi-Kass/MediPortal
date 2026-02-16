@@ -10,6 +10,7 @@ import {
   Stethoscope
 } from 'lucide-react';
 import { analyzeSymptoms } from '../services/geminiService';
+import { api } from '../services/api';
 
 interface PatientDashboardProps {
   user: User;
@@ -48,16 +49,36 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
   // Booking Form State
   const [bookingData, setBookingData] = useState({
     title: '',
+    date: new Date().toISOString().split('T')[0],
     time: '09:00 AM',
-    location: 'Main Clinic - Wing A'
+    location: 'Main Clinic - Wing A',
+    doctorId: '' as string
   });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // Doctors list for booking
+  const [doctors, setDoctors] = useState<{ id: string; name: string }[]>([]);
+
   useEffect(() => {
     setTempName(user.name);
   }, [user.name]);
+
+  useEffect(() => {
+    // Load available doctors
+    (async () => {
+      try {
+        const list = await api.getDoctors();
+        setDoctors(list);
+        if (list.length > 0) {
+          setBookingData(prev => ({ ...prev, doctorId: list[0].id }));
+        }
+      } catch (e) {
+        console.error('Failed to load doctors', e);
+      }
+    })();
+  }, []);
 
   const handleProfileSave = () => {
     onUpdateUser({ name: tempName });
@@ -100,16 +121,43 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
     setNewHistory({ event: '', date: new Date().toISOString().split('T')[0], visitType: 'Consultation', details: '' });
   };
 
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (onBookAppointment) {
+      const prettyTime = `${bookingData.date} ${bookingData.time}`;
+      // Send to parent (UI state) for immediate feedback if needed
       onBookAppointment({
-        ...bookingData,
+        title: bookingData.title,
+        time: prettyTime,
         type: 'CONSULTATION',
-        patientName: user.name
+        patientName: user.name,
+        location: bookingData.location
       });
+    }
+
+    // Persist to Supabase using services API
+    try {
+      const prettyTime = `${bookingData.date} ${bookingData.time}`;
+      if (!bookingData.doctorId) {
+        alert('Please select a doctor');
+        return;
+      }
+      await api.createSchedule(
+        {
+          title: bookingData.title,
+          time: prettyTime,
+          type: 'CONSULTATION',
+          patientName: user.name,
+          location: bookingData.location
+        },
+        bookingData.doctorId,
+        user.id
+      );
       setShowBookingModal(false);
-      setBookingData({ title: '', time: '09:00 AM', location: 'Main Clinic - Wing A' });
+      setBookingData({ title: '', date: new Date().toISOString().split('T')[0], time: '09:00 AM', location: 'Main Clinic - Wing A', doctorId: doctors[0]?.id || '' });
+    } catch (err) {
+      console.error('Failed to create schedule', err);
+      alert('Failed to create appointment. Please try again.');
     }
   };
 
@@ -229,6 +277,10 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Preferred Date</label>
+                  <input required type="date" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={bookingData.date} onChange={e => setBookingData({...bookingData, date: e.target.value})} />
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Preferred Time</label>
                   <select className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={bookingData.time} onChange={e => setBookingData({...bookingData, time: e.target.value})}>
                     <option>09:00 AM</option>
@@ -240,14 +292,28 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
                     <option>04:00 PM</option>
                   </select>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Location</label>
-                  <select className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={bookingData.location} onChange={e => setBookingData({...bookingData, location: e.target.value})}>
-                    <option>Main Clinic - Wing A</option>
-                    <option>Specialist Center - Floor 2</option>
-                    <option>Telehealth - Remote Video</option>
-                  </select>
-                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Location</label>
+                <select className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" value={bookingData.location} onChange={e => setBookingData({...bookingData, location: e.target.value})}>
+                  <option>Main Clinic - Wing A</option>
+                  <option>Specialist Center - Floor 2</option>
+                  <option>Telehealth - Remote Video</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Doctor</label>
+                <select
+                  required
+                  className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all"
+                  value={bookingData.doctorId}
+                  onChange={e => setBookingData({ ...bookingData, doctorId: e.target.value })}
+                >
+                  {doctors.length === 0 && <option value="">No doctors available</option>}
+                  {doctors.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
               </div>
               <button type="submit" className="w-full py-5 gradient-blue text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] shadow-xl shadow-blue-900/20 hover:-translate-y-1 transition-all">
                 Confirm Booking
@@ -440,18 +506,30 @@ const PatientDashboard: React.FC<PatientDashboardProps> = ({
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                {myAppointments && myAppointments.length > 0 ? (
-                 myAppointments.map(appt => (
-                   <div key={appt.id} className="p-4 rounded-3xl bg-slate-50 border border-slate-100 flex items-center gap-4 hover:bg-white transition-all">
-                     <div className="w-10 h-10 bg-white rounded-2xl flex flex-col items-center justify-center shadow-sm">
-                       <span className="text-[8px] font-black text-slate-400 uppercase">Start</span>
-                       <span className="text-[10px] font-black text-royal-blue">{appt.time.split(' ')[0]}</span>
+                 myAppointments.map(appt => {
+                   const timeLabel = (() => {
+                     // If time contains a date prefix (our prettyTime), try to extract the clock portion after the date
+                     const parts = appt.time.split(' ');
+                     if (parts.length >= 3) {
+                       // e.g., YYYY-MM-DD 09:00 AM -> show 09:00
+                       return parts[1];
+                     }
+                     // fallback to original split logic
+                     return parts[0];
+                   })();
+                   return (
+                     <div key={appt.id} className="p-4 rounded-3xl bg-slate-50 border border-slate-100 flex items-center gap-4 hover:bg-white transition-all">
+                       <div className="w-10 h-10 bg-white rounded-2xl flex flex-col items-center justify-center shadow-sm">
+                         <span className="text-[8px] font-black text-slate-400 uppercase">Start</span>
+                         <span className="text-[10px] font-black text-royal-blue">{timeLabel}</span>
+                       </div>
+                       <div className="min-w-0">
+                         <h5 className="text-sm font-black text-slate-900 truncate">{appt.title}</h5>
+                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest truncate">{appt.location}</p>
+                       </div>
                      </div>
-                     <div className="min-w-0">
-                       <h5 className="text-sm font-black text-slate-900 truncate">{appt.title}</h5>
-                       <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest truncate">{appt.location}</p>
-                     </div>
-                   </div>
-                 ))
+                   );
+                 })
                ) : (
                  <div className="col-span-2 py-8 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
                    <p className="text-xs text-slate-400 font-medium">No appointments scheduled.</p>

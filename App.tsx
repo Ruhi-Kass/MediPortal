@@ -19,6 +19,22 @@ const App: React.FC = () => {
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Admin allowlist for automatic role assignment on sign-in
+  const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const ensureAdminRole = async (user: User): Promise<User> => {
+    const isAdminAllowed = ADMIN_EMAILS.includes((user.email || '').toLowerCase());
+    if (isAdminAllowed && user.role !== UserRole.ADMIN) {
+      await api.updateUserRole(user.id, UserRole.ADMIN);
+      const refreshed = await api.getCurrentUser();
+      return refreshed || { ...user, role: UserRole.ADMIN };
+    }
+    return user;
+  };
+
   // Initial Data Fetch & Auth Listener
   useEffect(() => {
     // Check active session
@@ -55,7 +71,8 @@ const App: React.FC = () => {
     try {
       const user = await api.getCurrentUser();
       if (user) {
-        setCurrentUser(user);
+        const finalUser = await ensureAdminRole(user);
+        setCurrentUser(finalUser);
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -239,7 +256,11 @@ const App: React.FC = () => {
         </>
       )}
 
-      <Navbar user={currentUser} onLogout={handleLogout} onSwitchRole={(r) => handleUpdateUser({ role: r })} />
+      <Navbar user={currentUser} onLogout={handleLogout}  onSwitchRole={
+    currentUser?.role === "ADMIN"
+      ? (r) => handleUpdateUser({ role: r })
+      : undefined
+  } />
 
       <main className="pt-20 relative z-10 w-full">
         {!currentUser ? (
@@ -295,7 +316,7 @@ const App: React.FC = () => {
 
       <footer className="bg-white/80 backdrop-blur-sm border-t py-8 mt-12 relative z-10">
         <div className="max-w-7xl mx-auto px-4 text-center text-slate-500 text-xs md:text-sm">
-          &copy; 2024 MediPortal. Prototype medical system. All data simulated.
+          &copy; 2026 MediPortal. Prototype medical system. All data simulated.
         </div>
       </footer>
     </div>
