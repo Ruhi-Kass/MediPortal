@@ -11,6 +11,7 @@ import { api } from './services/api';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeRole, setActiveRole] = useState<UserRole | null>(null);
   const [activeAlerts, setActiveAlerts] = useState<EmergencyAlert[]>([]);
   const [inpatients, setInpatients] = useState<Inpatient[]>([]);
   const [pharmacyStock, setPharmacyStock] = useState<PharmacyItem[]>([]);
@@ -73,6 +74,7 @@ const App: React.FC = () => {
       if (user) {
         const finalUser = await ensureAdminRole(user);
         setCurrentUser(finalUser);
+        setActiveRole(finalUser.role);
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -147,7 +149,7 @@ const App: React.FC = () => {
     // For this prototype migration, let's just use the current user ID if they are a doctor, 
     // or if patient, we might fail or need a default doctor.
     // Let's pass currentUser.id if doctor, else we need a fallback.
-    const doctorId = currentUser.role === UserRole.DOCTOR ? currentUser.id : '00000000-0000-0000-0000-000000000000'; // Invalid UUID if fetching fails
+    const doctorId = activeRole === UserRole.DOCTOR ? currentUser.id : '00000000-0000-0000-0000-000000000000'; // Invalid UUID if fetching fails
     await api.createSchedule({
       ...booking,
       time: booking.time,
@@ -256,11 +258,23 @@ const App: React.FC = () => {
         </>
       )}
 
-      <Navbar user={currentUser} onLogout={handleLogout}  onSwitchRole={
-    currentUser?.role === "ADMIN"
-      ? (r) => handleUpdateUser({ role: r })
+      {/* <Navbar user={currentUser} onLogout={handleLogout} 
+      onSwitchRole={
+  currentUser?.role === UserRole.ADMIN
+    ? (r) => setActiveRole(r)
+    : undefined
+} /> */}
+
+<Navbar 
+  user={currentUser}
+  activeRole={activeRole}
+  onLogout={handleLogout}
+  onSwitchRole={
+    currentUser?.role === UserRole.ADMIN
+      ? (r) => setActiveRole(r)
       : undefined
-  } />
+  }
+/>
 
       <main className="pt-20 relative z-10 w-full">
         {!currentUser ? (
@@ -269,7 +283,7 @@ const App: React.FC = () => {
           // Actually, onAuthStateChange handles the state update. 
           // We just need LandingPage to perform the API call.
           <LandingPage onLogin={() => { }} />
-        ) : currentUser.role === UserRole.PATIENT ? (
+        ) : activeRole === UserRole.PATIENT ? (
           <PatientDashboard
             user={currentUser}
             onUpdateRecord={(record) => handleUpdateUser({ medicalRecord: record })}
@@ -279,7 +293,7 @@ const App: React.FC = () => {
             onBookAppointment={handleBookAppointment}
             myAppointments={schedules.filter(s => s.patientName === currentUser.name)}
           />
-        ) : currentUser.role === UserRole.DOCTOR ? (
+        ) : activeRole === UserRole.DOCTOR ? (
           <DoctorDashboard
             user={currentUser}
             activeAlerts={activeAlerts}
